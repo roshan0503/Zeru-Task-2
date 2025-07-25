@@ -56,7 +56,7 @@ class MoralisCompoundRiskScorer:
                 return data if isinstance(data, list) else []
             elif response.status_code == 429:
                 st.warning("Rate limit reached. Waiting...")
-                time.sleep(2)
+                time.sleep(3)
                 return []
             else:
                 return []
@@ -335,7 +335,7 @@ class MoralisCompoundRiskScorer:
 def main():
     st.title("🏦 Compound Protocol Wallet Risk Scorer")
     st.markdown("""
-    Analyze wallet interactions with Compound V2 protocol using **Moralis API** for comprehensive risk assessment.
+    Analyze **ALL** wallet interactions with Compound V2 protocol using **Moralis API**.
     
     **Risk Score Interpretation:**
     - **0-300**: 🟢 **Low Risk** (Conservative users, good activity patterns)
@@ -345,7 +345,7 @@ def main():
     
     # Sidebar
     with st.sidebar:
-        st.header("📊 Risk Assessment Factors")
+        st.header("📊 Risk Assessment Info")
         st.markdown("""
         **🔴 Risk Indicators:**
         - High borrow retention ratio
@@ -363,14 +363,14 @@ def main():
         st.markdown("---")
         st.markdown("### ⚡ API Status")
         st.success("✅ Moralis API Connected")
-        st.info("📊 Using ERC20 balances & transfers")
+        st.info("📊 Analyzing ALL wallets automatically")
     
     # File upload
     st.header("📁 Upload Wallet Data")
     uploaded_file = st.file_uploader(
         "Choose a CSV file with wallet addresses",
         type=['csv'],
-        help="CSV should contain a 'wallet_id' column with Ethereum addresses"
+        help="CSV should contain a 'wallet_id' column with Ethereum addresses. ALL wallets will be analyzed automatically."
     )
     
     if uploaded_file is not None:
@@ -390,28 +390,24 @@ def main():
                 return
             
             st.success(f"✅ Loaded {len(df)} valid wallet addresses")
-            with st.expander("Preview data"):
-                st.dataframe(df.head(), use_container_width=True)
+            st.info(f"🚀 **Ready to analyze ALL {len(df)} wallets**")
             
-            # Analysis settings
-            max_wallets = st.slider(
-                "Maximum wallets to analyze",
-                min_value=1,
-                max_value=min(100, len(df)),
-                value=min(20, len(df)),
-                help="Limit to avoid rate limits"
-            )
+            with st.expander("Preview uploaded data"):
+                st.dataframe(df.head(10), use_container_width=True)
             
-            if st.button("🚀 Analyze Wallets", type="primary"):
+            if st.button("🚀 Analyze ALL Wallets", type="primary"):
                 scorer = MoralisCompoundRiskScorer()
                 
+                # Progress tracking
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
                 results = []
-                total_wallets = min(max_wallets, len(df))
+                total_wallets = len(df)
+                successful_analyses = 0
+                failed_analyses = 0
                 
-                for idx, wallet_address in enumerate(df['wallet_id'].head(total_wallets)):
+                for idx, wallet_address in enumerate(df['wallet_id']):
                     status_text.text(f"🔍 Analyzing wallet {idx+1}/{total_wallets}: {wallet_address}")
                     
                     try:
@@ -452,16 +448,18 @@ def main():
                             'net_borrow_usd': round(features['net_borrow_usd'], 2),
                             'account_age_days': features['account_age_days'],
                             'days_since_last_activity': features['days_since_last_activity'],
-                            'unique_tokens': features['unique_tokens']
+                            'unique_tokens': features['unique_tokens'],
+                            'analysis_status': 'Success'
                         })
                         
+                        successful_analyses += 1
+                        
                     except Exception as e:
-                        st.warning(f"⚠️ Error analyzing {wallet_address}: {str(e)}")
                         # Add default entry for failed analysis
                         results.append({
                             'wallet_id': wallet_address,
                             'risk_score': 500,  # Neutral score for unknown
-                            'risk_category': "Unknown",
+                            'risk_category': "Analysis Failed",
                             'risk_emoji': "⚪",
                             'total_transactions': 0,
                             'current_balance_usd': 0,
@@ -470,55 +468,97 @@ def main():
                             'net_borrow_usd': 0,
                             'account_age_days': 0,
                             'days_since_last_activity': 0,
-                            'unique_tokens': 0
+                            'unique_tokens': 0,
+                            'analysis_status': f'Failed: {str(e)[:50]}'
                         })
+                        
+                        failed_analyses += 1
                     
+                    # Update progress
                     progress_bar.progress((idx + 1) / total_wallets)
-                    time.sleep(0.3)  # Rate limiting
+                    
+                    # Rate limiting for API stability
+                    time.sleep(0.2)
                 
-                status_text.text("✅ Analysis Complete!")
+                status_text.text("✅ Analysis Complete for ALL Wallets!")
                 
-                # Display results
+                # Display final results
                 if results:
                     results_df = pd.DataFrame(results)
                     
                     st.header("📊 Risk Analysis Results")
                     
-                    # Summary metrics
-                    col1, col2, col3, col4 = st.columns(4)
+                    # Summary metrics only
+                    col1, col2, col3, col4, col5 = st.columns(5)
                     with col1:
-                        st.metric("Average Risk Score", f"{results_df['risk_score'].mean():.1f}")
+                        st.metric("Total Analyzed", len(results_df))
                     with col2:
+                        avg_risk = results_df[results_df['analysis_status'] == 'Success']['risk_score'].mean()
+                        st.metric("Average Risk Score", f"{avg_risk:.1f}" if not pd.isna(avg_risk) else "N/A")
+                    with col3:
                         high_risk = len(results_df[results_df['risk_score'] > 600])
                         st.metric("🔴 High Risk", f"{high_risk}")
-                    with col3:
+                    with col4:
                         active_wallets = len(results_df[results_df['total_transactions'] > 0])
                         st.metric("Active Wallets", f"{active_wallets}")
-                    with col4:
-                        with_balance = len(results_df[results_df['current_balance_usd'] > 0])
-                        st.metric("With Compound Tokens", f"{with_balance}")
+                    with col5:
+                        success_rate = (successful_analyses / total_wallets) * 100
+                        st.metric("Success Rate", f"{success_rate:.1f}%")
                     
                     # Results table
-                    st.subheader("📋 Detailed Results")
+                    st.subheader("📋 Complete Analysis Results")
+                    
+                    # Create the Risk column BEFORE using it
                     display_df = results_df.copy()
                     display_df['Risk'] = display_df['risk_emoji'] + ' ' + display_df['risk_category']
                     
-                    final_display = display_df[[
+                    # Select columns for display
+                    display_columns = [
                         'wallet_id', 'risk_score', 'Risk', 'total_transactions',
                         'current_balance_usd', 'total_minted_usd', 'total_borrowed_usd',
-                        'account_age_days', 'unique_tokens'
-                    ]].sort_values('risk_score', ascending=False)
+                        'account_age_days', 'unique_tokens', 'analysis_status'
+                    ]
                     
+                    # Sort by risk score descending - now Risk column exists
+                    final_display = display_df[display_columns].sort_values('risk_score', ascending=False)
                     st.dataframe(final_display, use_container_width=True)
                     
-                    # Download button
-                    csv_data = results_df.to_csv(index=False)
-                    st.download_button(
-                        label="📥 Download Results CSV",
-                        data=csv_data,
-                        file_name=f"compound_risk_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv"
-                    )
+                    # Download options
+                    st.subheader("📥 Download Results")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # Summary CSV (successful analyses only)
+                        successful_df = results_df[results_df['analysis_status'] == 'Success']
+                        if not successful_df.empty:
+                            # Create Risk column for successful results too
+                            successful_display_df = successful_df.copy()
+                            successful_display_df['Risk'] = successful_display_df['risk_emoji'] + ' ' + successful_display_df['risk_category']
+                            
+                            summary_columns = [
+                                'wallet_id', 'risk_score', 'Risk', 'total_transactions',
+                                'current_balance_usd', 'total_minted_usd', 'total_borrowed_usd',
+                                'account_age_days', 'unique_tokens'
+                            ]
+                            
+                            summary_csv = successful_display_df[summary_columns].to_csv(index=False)
+                            st.download_button(
+                                label="📄 Download Successful Results CSV",
+                                data=summary_csv,
+                                file_name=f"compound_risk_successful_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv"
+                            )
+                    
+                    with col2:
+                        # Complete CSV with all results including failures
+                        complete_csv = results_df.to_csv(index=False)
+                        st.download_button(
+                            label="📊 Download Complete Results CSV",
+                            data=complete_csv,
+                            file_name=f"compound_risk_complete_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv"
+                        )
                 
         except Exception as e:
             st.error(f"❌ Error processing file: {str(e)}")
@@ -530,7 +570,8 @@ def main():
             'wallet_id': [
                 '0x742d35cc1ae0cd95a5e7b48f0a77b1b0ef0d5c7e',
                 '0x8ba1f109551bd432803012645hac136c0c8f47eb',
-                '0x40ec5b33f54e0e8a33a975908c5ba1c14e5bccdf'
+                '0x40ec5b33f54e0e8a33a975908c5ba1c14e5bccdf',
+                '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984'
             ]
         })
         st.dataframe(sample_df, use_container_width=True)
@@ -542,6 +583,8 @@ def main():
             file_name="sample_wallets.csv",
             mime="text/csv"
         )
+        
+        st.info("💡 **Upload your CSV with wallet addresses - ALL wallets will be analyzed automatically!**")
 
 if __name__ == "__main__":
     main()
