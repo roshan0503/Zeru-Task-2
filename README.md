@@ -168,11 +168,24 @@ pip install streamlit pandas requests numpy
 
 The application uses Moralis API with an embedded API key for immediate functionality.
 
+**⚠️ Important API Limitations:**
+- Moralis provides 40,000 compute units daily on the free tier
+- A single analysis run can consume up to 20,000 compute units
+- If you encounter errors or no results, the daily limit may be reached
+- **Solution**: Wait 24 hours for the limit to reset and try again
+
 ### Running the Application
 
 ```bash
 streamlit run app.py
 ```
+
+### Troubleshooting
+
+**If you encounter issues:**
+1. **No results or API errors**: Daily Moralis API limit likely reached (40K units)
+2. **Solution**: Wait 24 hours for automatic limit reset
+3. **Alternative**: Upgrade to Moralis Pro plan for higher limits
 
 ### CSV Format
 
@@ -215,6 +228,7 @@ The application generates comprehensive CSV reports containing:
 - **Success Rate**: >95% for valid Ethereum addresses
 - **Memory Usage**: Constant memory footprint regardless of dataset size
 - **API Efficiency**: Optimized endpoint usage minimizing API calls
+- **Daily Capacity**: ~2 full analysis runs per day (due to Moralis API limits)
 
 ## 🚀 Future Enhancements
 
